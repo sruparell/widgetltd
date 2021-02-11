@@ -1,0 +1,279 @@
+create or replace package body db_manage_employees
+as
+
+-------------------------------------------------------------------------------------
+--  validate_employee_exists()
+-- 
+-- Raise an exception if an employee id does not exist
+-------------------------------------------------------------------------------------
+
+procedure validate_employee_exists(  p_employee_id  in employees.employee_id%type )
+is
+  cursor c_get_emp 
+  is
+      select emp.employee_id
+      from employees emp
+      where emp.employee_id = p_employee_id;
+  
+ vn_emp_id employees.employee_id%type;
+
+begin
+  open c_get_emp;
+  fetch c_get_emp into vn_emp_id;
+  close c_get_emp;
+  
+  if vn_emp_id is null then 
+     raise_application_error(-20010 , 'Employee Id does not exists' );
+  end if;
+  
+end validate_employee_exists;
+
+-------------------------------------------------------------------------------------
+--  validate_dept_exists()
+-- 
+-- Raise an exception if an department id does not exist
+-------------------------------------------------------------------------------------
+procedure validate_dept_exists(  p_department_id  in departments.department_id%type )
+is
+  cursor c_get_dept 
+  is
+      select dept.department_id
+      from departments dept
+      where dept.department_id = p_department_id;
+  
+ vn_dept_id departments.department_id%type ;
+
+begin
+  open c_get_dept;
+  fetch c_get_dept into vn_dept_id;
+  close c_get_dept;
+  
+  if vn_dept_id is null then 
+     raise_application_error(-20011 , 'Department Id does not exists' );
+  end if;
+  
+end validate_dept_exists;
+
+
+-------------------------------------------------------------------------------------
+--  validate_employee()
+-- 
+-- Raise an exception if attributes of an employee are invalid including:
+--  - Mandatory columns missing;
+--  - Hire Date is not in DD/MM/YY format
+--  - Char fields exceed character length
+--  - FK columns are valid
+--  - Employeee Id does not already exist 
+-------------------------------------------------------------------------------------
+
+procedure validate_employee( p_employee_id  in employees.employee_id%type,
+                             p_employee_name in employees.employee_name%type,
+                             p_job_title in employees.job_title%type,
+                             p_date_hired  in varchar2,
+                             p_salary in employees.salary%type, 
+                             p_department_id in employees.department_id%type, 
+                             p_manager_id in employees.manager_id%type
+                           )
+is
+  cursor c_emp_issues 
+  is
+      select -20001 err_code, 'Employee Id already exists - it must be unique' err_message
+      from employees emp
+      where emp.employee_id = p_employee_id
+    union all
+      select -20002, case 
+                       when p_employee_name is null then 'Employee Name'
+                       when p_job_title is null then 'Job Title'
+                       when p_date_hired is null then 'Date Hired'
+                       when p_salary is null then 'Salary'
+                       when p_department_id is null then 'Department Id'
+                     end ||' must be specified'
+      from dual 
+      where  p_employee_name is null 
+      or  p_job_title is null 
+      or  p_date_hired is null 
+      or  p_salary is null 
+      or  p_department_id is null    
+    union all
+      select -20003, 'Employee Name length is too long'
+      from dual 
+      where  length(p_employee_name) > 50
+    union all
+      select -20004, 'Job Title length is too long'
+      from dual 
+      where  length(p_job_title) > 50
+    union all
+      select -20005, 'Date Hired is in an incorrect format - Should be DD/MM/YY'
+      from dual 
+      where not regexp_like (p_date_hired,'^(0?[1-9]|[12][0-9]|3[01])[\/\-](0?[1-9]|1[012])[\/\-]\d{2}$')
+    union all
+      select -20006, 'Department Id is not a valid Department '
+      from dual 
+      where not exists (select null 
+                        from departments dept
+                        where dept.department_id = p_department_id) 
+    union all
+      select -20007, 'Manager Id is not valid '
+      from dual 
+      where p_manager_id is not null
+      and not exists (select null 
+                        from employees emp
+                        where emp.employee_id = p_manager_id);
+
+  vr_emp_issues c_emp_issues%rowtype;
+begin
+
+  open c_emp_issues;
+  fetch c_emp_issues into vr_emp_issues;
+  close c_emp_issues;
+
+  if vr_emp_issues.err_code is not null then 
+    raise_application_error(vr_emp_issues.err_code,vr_emp_issues.err_message);
+  end if;
+  
+end validate_employee;
+
+
+-------------------------------------------------------------------------------------
+--  create_employee()
+-- 
+-- Create the Employee record.
+-- Note: p_employee_id can be null and p_date_hired should be in DD/MM/YY format
+-------------------------------------------------------------------------------------
+function create_employee( p_employee_id  in employees.employee_id%type,
+                          p_employee_name in employees.employee_name%type,
+                          p_job_title in employees.job_title%type,
+                          p_date_hired  in varchar2,
+                          p_salary in employees.salary%type, 
+                          p_department_id in employees.department_id%type, 
+                          p_manager_id in employees.manager_id%type
+                        )
+    return employees.employee_id%type
+is
+  vn_emp_id employees.employee_id%type;
+begin
+
+ validate_employee( p_employee_id => p_employee_id,
+                    p_employee_name => p_employee_name,
+                    p_job_title => p_job_title,
+                    p_date_hired => p_date_hired,
+                    p_salary => p_salary, 
+                    p_department_id => p_department_id, 
+                    p_manager_id => p_manager_id );
+
+
+ insert into employees 
+ (employee_id, employee_name, job_title, date_hired, salary, department_id, manager_id
+ )
+ values
+ ( p_employee_id, p_employee_name, p_job_title, to_date(p_date_hired,'DD/MM/RR'), p_salary, p_department_id, p_manager_id
+ )
+ returning employee_id into vn_emp_id;
+ 
+ return vn_emp_id;
+ 
+end create_employee;
+
+-------------------------------------------------------------------------------------
+--  create_employee()
+-- 
+-- Overloaded create_employee() if employee_id is not required
+-- Note: p_employee_id can be null and p_date_hired should be in DD/MM/YY format
+-------------------------------------------------------------------------------------
+procedure create_employee( p_employee_id  in employees.employee_id%type,
+                          p_employee_name in employees.employee_name%type,
+                          p_job_title in employees.job_title%type,
+                          p_date_hired  in varchar2,
+                          p_salary in employees.salary%type, 
+                          p_department_id in employees.department_id%type, 
+                          p_manager_id in employees.manager_id%type
+                        )
+is
+  vn_emp_id employees.employee_id%type;
+begin 
+ 
+  vn_emp_id := create_employee( p_employee_id => p_employee_id,
+                                p_employee_name => p_employee_name,
+                                p_job_title => p_job_title,
+                                p_date_hired => p_date_hired,
+                                p_salary => p_salary, 
+                                p_department_id => p_department_id, 
+                                p_manager_id => p_manager_id );
+
+end create_employee;
+
+-------------------------------------------------------------------------------------
+--  update_employee_salary()
+-- 
+-- Update employee salary by a percent
+-- Note: p_pct_increase of 10 = increase of 10% or -10 = decrease of 10%
+-------------------------------------------------------------------------------------
+procedure update_employee_salary( p_employee_id in employees.employee_id%type, p_pct_increase in number )
+is
+begin
+
+  validate_employee_exists( p_employee_id );
+  
+  if p_pct_increase is null then 
+     raise_application_error(-20012 , 'Percent Increase must be specified' );
+  end if;
+  
+  update employees emp
+  set salary = salary + round(emp.salary*p_pct_increase/100)
+  where emp.employee_id = p_employee_id; 
+
+end update_employee_salary;
+
+
+-------------------------------------------------------------------------------------
+--  transfer_employee()
+-- 
+-- Update employee department to a new department
+-------------------------------------------------------------------------------------
+procedure transfer_employee( p_employee_id in employees.employee_id%type, p_department_id in departments.department_id%type )
+is
+begin
+
+  validate_employee_exists( p_employee_id );
+  validate_dept_exists( p_department_id );
+  
+  update employees emp
+  set emp.department_id = p_department_id
+  where emp.employee_id = p_employee_id; 
+
+end transfer_employee;
+
+-------------------------------------------------------------------------------------
+--  get_employee_salary()
+-- 
+-- Return Employee Salary
+-------------------------------------------------------------------------------------
+function get_employee_salary( p_employee_id in employees.employee_id%type )
+    return employees.salary%type
+is
+
+  cursor c_get_salary
+  is 
+  select emp.salary
+  from employees emp
+  where emp.employee_id = p_employee_id;
+    
+ v_salary employees.salary%type;
+begin
+
+  open c_get_salary;
+  fetch c_get_salary into v_salary;
+  close c_get_salary;
+  
+  -- Note: I could call validate_employee_exists() but as salary is mandatory so I could just test for that (and avoid an extra fetch)
+  if v_salary is null then 
+     raise_application_error(-20010 , 'Employee Id does not exists' );
+  end if;
+
+  return v_salary;
+
+end get_employee_salary;
+
+
+end db_manage_employees;
+/

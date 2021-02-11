@@ -1,0 +1,60 @@
+create or replace package db_manage_employees
+as
+
+-------------------------------------------------------------------------------------
+--  create_employee()
+-- 
+-- Create the Employee record.
+-- Note: p_employee_id can be null and p_date_hired should be in DD/MM/YY format
+-------------------------------------------------------------------------------------
+function create_employee( p_employee_id  in employees.employee_id%type,
+                          p_employee_name in employees.employee_name%type,
+                          p_job_title in employees.job_title%type,
+                          p_date_hired  in varchar2,
+                          p_salary in employees.salary%type, 
+                          p_department_id in employees.department_id%type, 
+                          p_manager_id in employees.manager_id%type
+                        )
+    return employees.employee_id%type;
+
+-------------------------------------------------------------------------------------
+--  create_employee()
+-- 
+-- Overloaded create_employee() if employee_id is not required
+-- Note: p_employee_id can be null and p_date_hired should be in DD/MM/YY format
+-------------------------------------------------------------------------------------
+procedure create_employee( p_employee_id  in employees.employee_id%type,
+                          p_employee_name in employees.employee_name%type,
+                          p_job_title in employees.job_title%type,
+                          p_date_hired  in varchar2,
+                          p_salary in employees.salary%type, 
+                          p_department_id in employees.department_id%type, 
+                          p_manager_id in employees.manager_id%type
+                        );
+
+-------------------------------------------------------------------------------------
+--  update_employee_salary()
+-- 
+-- Update employee salary by a percent
+-- Note: p_pct_increase of 10 = increase of 10% or -10 = decrease of 10%
+-------------------------------------------------------------------------------------
+procedure update_employee_salary( p_employee_id in employees.employee_id%type, p_pct_increase in number );
+
+-------------------------------------------------------------------------------------
+--  transfer_employee()
+-- 
+-- Update employee department to a new department
+-------------------------------------------------------------------------------------
+procedure transfer_employee( p_employee_id in employees.employee_id%type, p_department_id in departments.department_id%type );
+
+-------------------------------------------------------------------------------------
+--  get_employee_salary()
+-- 
+-- Return Employee Salary
+-------------------------------------------------------------------------------------
+function get_employee_salary( p_employee_id in employees.employee_id%type )
+    return employees.salary%type;
+
+end db_manage_employees;
+/
+
